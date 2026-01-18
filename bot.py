@@ -37,34 +37,51 @@ def get_ai_response(user_message):
             return "Не могу ответить сейчас"
             
     except Exception as e:
-        print(f"Ошибка: {e}")
+        print(f"Ошибка get_ai_response: {e}")
         return "Произошла ошибка"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Я бот для бизнес-аккаунта")
+    if update.message:
+        await update.message.reply_text("Привет! Я бот для бизнес-аккаунта")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        user_message = update.message.text
-        ai_response = get_ai_response(user_message)
-        await update.message.reply_text(ai_response)
-    except Exception as e:
-        print(f"Ошибка: {e}")
-        await update.message.reply_text("Произошла ошибка")
-
-async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        if update.business_message:
-            user_message = update.business_message.text
+        if update.message and update.message.text:
+            user_message = update.message.text
             ai_response = get_ai_response(user_message)
-            
-            await context.bot.send_message(
-                chat_id=update.business_message.chat.id,
-                text=ai_response,
-                business_connection_id=update.business_message.business_connection_id
-            )
+            await update.message.reply_text(ai_response)
     except Exception as e:
-        print(f"Ошибка business: {e}")
+        print(f"Ошибка handle_message: {e}")
+
+async def handle_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        print(f"Получен update: {update}")
+        
+        # Обработка Business сообщений
+        if hasattr(update, 'business_message') and update.business_message:
+            biz_msg = update.business_message
+            print(f"Business message от {biz_msg.chat.id}: {biz_msg.text}")
+            
+            if biz_msg.text:
+                ai_response = get_ai_response(biz_msg.text)
+                
+                await context.bot.send_message(
+                    chat_id=biz_msg.chat.id,
+                    text=ai_response,
+                    business_connection_id=biz_msg.business_connection_id
+                )
+                print(f"Отправлен ответ: {ai_response}")
+        
+        # Обработка обычных сообщений (для тестирования в личке с ботом)
+        elif update.message and update.message.text:
+            user_message = update.message.text
+            ai_response = get_ai_response(user_message)
+            await update.message.reply_text(ai_response)
+            
+    except Exception as e:
+        print(f"Ошибка handle_all_updates: {e}")
+        import traceback
+        traceback.print_exc()
 
 def main():
     print("Бот запущен в Business режиме!")
@@ -72,8 +89,7 @@ def main():
     application = Application.builder().token(BOT_TOKEN).build()
     
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(MessageHandler(filters.ALL, handle_business_message))
+    application.add_handler(MessageHandler(filters.ALL, handle_all_updates))
     
     application.run_polling(allowed_updates=['message', 'business_message', 'business_connection'])
 
