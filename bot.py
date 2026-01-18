@@ -1,24 +1,23 @@
 import os
 import telebot
+from telebot import types
 import requests
 
 BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
-MODEL = os.environ.get('MODEL_NAME', 'meta-llama/llama-3.1-8b-instruct:free')
+MODEL = os.environ.get('MODEL_NAME', 'xiaomi/mimo-v2-flash:free')
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # Настройте характер бота здесь:
-SYSTEM_PROMPT = """Ты - дружелюбный помощник, который отвечает за пользователя в личных сообщениях. 
-Отвечай естественно, живо и по-человечески. 
-Будь кратким, но информативным."""
+SYSTEM_PROMPT = """Ты - Артур. Отвечаешь в личных сообщениях за владельца аккаунта, когда его нет на связи.
+Общайся непринуждённо и естественно, как в обычной переписке.
+Пиши коротко и по делу.
+Можешь использовать смайлики, но в меру.
+Если не знаешь точного ответа - так и скажи."""
 
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "Привет! Я бот с AI. Напиши мне что-нибудь!")
-
-@bot.message_handler(func=lambda message: True)
-def echo_all(message):
+def get_ai_response(user_message):
+    """Получить ответ от AI"""
     try:
         response = requests.post(
             url="https://openrouter.ai/api/v1/chat/completions",
@@ -30,7 +29,7 @@ def echo_all(message):
                 "model": MODEL,
                 "messages": [
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": message.text}
+                    {"role": "user", "content": user_message}
                 ]
             },
             timeout=30
@@ -38,22 +37,54 @@ def echo_all(message):
         
         response_data = response.json()
         
-        # Проверяем разные варианты ответа
         if 'choices' in response_data and len(response_data['choices']) > 0:
-            ai_response = response_data['choices'][0]['message']['content']
+            return response_data['choices'][0]['message']['content']
         elif 'error' in response_data:
-            ai_response = f"Ошибка API: {response_data['error'].get('message', 'Неизвестная ошибка')}"
+            return f"Ошибка API: {response_data['error'].get('message', 'Неизвестная ошибка')}"
         else:
-            ai_response = f"Неожиданный формат ответа: {response_data}"
-        
-        bot.reply_to(message, ai_response)
-        
+            return "Не могу ответить сейчас, попробуйте позже"
+            
     except requests.exceptions.Timeout:
-        bot.reply_to(message, "Превышено время ожидания ответа. Попробуйте ещё раз.")
+        return "Превышено время ожидания. Попробуйте позже."
+    except Exception as e:
+        print(f"Ошибка: {e}")
+        return "Произошла ошибка при обработке запроса"
+
+# Обработка Business сообщений
+@bot.business_message_handler(func=lambda message: True)
+def handle_business_message(message):
+    """Обрабатывает сообщения в бизнес-чатах"""
+    try:
+        print(f"Получено business сообщение от {message.from_user.username}: {message.text}")
+        
+        # Получаем ответ от AI
+        ai_response = get_ai_response(message.text)
+        
+        # Отправляем ответ
+        bot.send_message(
+            chat_id=message.chat.id,
+            text=ai_response,
+            business_connection_id=message.business_connection_id
+        )
+        
+    except Exception as e:
+        print(f"Ошибка при обработке business сообщения: {e}")
+
+# Обработка обычных команд (для тестирования)
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "Привет! Я бот для бизнес-аккаунта. Подключи меня через Telegram Business!")
+
+# Обработка обычных сообщений (для тестирования в личке с ботом)
+@bot.message_handler(func=lambda message: True)
+def handle_regular_message(message):
+    try:
+        ai_response = get_ai_response(message.text)
+        bot.reply_to(message, ai_response)
     except Exception as e:
         bot.reply_to(message, f"Ошибка: {str(e)}")
-        print(f"Полная ошибка: {e}")
 
 if __name__ == '__main__':
-    print("Бот запущен!")
-    bot.infinity_polling()
+    print("Бот запущен в Business режиме!")
+    print("Подключите его через Telegram Business Settings")
+    bot.infinity_polling(allowed_updates=['message', 'business_message'])
