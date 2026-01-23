@@ -32,13 +32,18 @@ def get_ai_response(user_message):
         if 'choices' in response_data and len(response_data['choices']) > 0:
             return response_data['choices'][0]['message']['content']
         elif 'error' in response_data:
-            return f"Ошибка API: {response_data['error'].get('message', 'Неизвестная ошибка')}"
+            error_msg = response_data['error'].get('message', 'Неизвестная ошибка')
+            print(f"API Error: {error_msg}")
+            return None
         else:
             print(f"Неожиданный формат: {response_data}")
-            return "Не могу ответить сейчас"
+            return None
+    except requests.exceptions.Timeout:
+        print("Timeout error")
+        return None
     except Exception as e:
         print(f"Ошибка get_ai_response: {e}")
-        return "Произошла ошибка"
+        return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
@@ -49,7 +54,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.message and update.message.text:
             user_message = update.message.text
             ai_response = get_ai_response(user_message)
-            await update.message.reply_text(ai_response)
+            if ai_response:
+                await update.message.reply_text(ai_response)
+            else:
+                print("Ответ пустой, пропускаем")
     except Exception as e:
         print(f"Ошибка handle_message: {e}")
 
@@ -61,16 +69,22 @@ async def handle_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE)
             print(f"Business message от {biz_msg.chat.id}: {biz_msg.text}")
             if biz_msg.text:
                 ai_response = get_ai_response(biz_msg.text)
-                await context.bot.send_message(
-                    chat_id=biz_msg.chat.id,
-                    text=ai_response,
-                    business_connection_id=biz_msg.business_connection_id
-                )
-                print(f"Отправлен ответ: {ai_response}")
+                if ai_response:
+                    await context.bot.send_message(
+                        chat_id=biz_msg.chat.id,
+                        text=ai_response,
+                        business_connection_id=biz_msg.business_connection_id
+                    )
+                    print(f"Отправлен ответ: {ai_response}")
+                else:
+                    print("Ответ пустой, пропускаем отправку")
         elif update.message and update.message.text:
             user_message = update.message.text
             ai_response = get_ai_response(user_message)
-            await update.message.reply_text(ai_response)
+            if ai_response:
+                await update.message.reply_text(ai_response)
+            else:
+                print("Ответ пустой, пропускаем")
     except Exception as e:
         print(f"Ошибка handle_all_updates: {e}")
         import traceback
